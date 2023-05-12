@@ -1,61 +1,35 @@
-name: Release
+name: goreleaser
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - "*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
-  release:
-    name: Release
+  goreleaser:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Running govulncheck
+        uses: Templum/govulncheck-action@v0.10.1
+        with:
+          github-token: ${{ secrets.GH_PAT }}
 
       - name: Set up Go
-        uses: actions/setup-go@v2
-        with:
-          go-version: '1.16'
+        uses: actions/setup-go@v4
 
-      - name: Build and Release
-        id: build
-        uses: goreleaser/goreleaser-action@v2
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v4.2.0
         with:
           version: latest
           args: release --rm-dist
-
-      - name: Create Release
-        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
-        with:
-          tag_name: ${{ steps.build.outputs.version }}
-          release_name: Release ${{ steps.build.outputs.version }}
-          draft: false
-          prerelease: false
-
-      - name: Upload Assets
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: |
-            ./dist/certcheck_linux_amd64
-            ./dist/certcheck_linux_arm64
-            ./dist/certcheck_windows_amd64.exe
-            ./dist/certcheck_darwin_amd64
-            ./dist/certcheck_darwin_arm64
-          asset_name: |
-            certcheck_linux_amd64
-            certcheck_linux_arm64
-            certcheck_windows_amd64.exe
-            certcheck_darwin_amd64
-          asset_content_type: |
-            application/octet-stream
-            application/octet-stream
-            application/octet-stream
-            application/octet-stream
-            application/octet-stream
