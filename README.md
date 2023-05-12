@@ -1,6 +1,6 @@
 # certcheck
 
-A Go program to display certificate chains in the same vein as certtest.
+A Go program to display certificate chains in the same vein as ssl-tester.
 
 ## Usage
 
@@ -41,5 +41,3 @@ A Go program to display certificate chains in the same vein as certtest.
 ## About
 
 There's a general lack of understanding of how TLS works, the certificate chains used, or cryptography in general. Creating command line tools to help show folks how things work can't hurt, right?
-
-Made by Chris Short with help from ChatGPT on 2023-05-11
