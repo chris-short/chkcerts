@@ -8,7 +8,6 @@ A Go program to display certificate chains in the same vein as ssl-tester.
 
 ## Example Output
 
-```
 	Subject: *.chrisshort.net
 	Issuer: R3
 	Valid from: 2023-04-25 02:30:44 +0000 UTC
@@ -36,7 +35,6 @@ A Go program to display certificate chains in the same vein as ssl-tester.
 	IP Addresses: []
 	Signature algorithm: SHA256-RSA
 	-----
-```
 
 ## About
 
