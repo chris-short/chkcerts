@@ -24,7 +24,7 @@ import (
 
 func main() {
 	if len(os.Args) != 2 {
-		fmt.Println("Please provide a URL as an argument.")
+		fmt.Println("Please provide a URL (include https://)")
 		os.Exit(1)
 	}
 
