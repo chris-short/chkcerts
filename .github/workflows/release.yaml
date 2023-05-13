@@ -5,6 +5,8 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - "main"
 
 jobs:
     build-release:
@@ -25,6 +27,6 @@ jobs:
           uses: goreleaser/goreleaser-action@master
           with:
             version: latest
-            args: release --rm-dist
+            args: release --clean
           env:
             GITHUB_TOKEN: ${{ secrets.GH_PAT }}

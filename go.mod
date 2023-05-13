@@ -1,3 +1,3 @@
-module github.com/chris-short/certcheck
+module certcheck
 
 go 1.18
