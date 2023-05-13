@@ -15,18 +15,10 @@ jobs:
     strategy:
       matrix:
         goos: [darwin, linux, windows]
-        goarch: [amd64, arm, arm64, "386"]
+        goarch: [amd64, arm64]
         exclude:
-          - goarch: "386"
-            goos: darwin
-          - goarch: arm
-            goos: darwin
-          - goarch: arm
-            goos: windows
           - goarch: arm64
             goos: windows
-          - goarch: linux
-            goos: "386"
     steps:
     - uses: actions/checkout@main
     - uses: wangyoucao577/go-release-action@master
