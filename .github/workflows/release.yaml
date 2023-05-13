@@ -16,15 +16,17 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        goos: [darwin, linux, windows, freebsd, netbsd, openbsd]
+        goos: [darwin, linux, windows]
         goarch: [amd64, arm, arm64, "386"]
         exclude:
           - goarch: "386"
             goos: darwin
-          - goarch: arm64
-            goos: windows
           - goarch: arm
             goos: darwin
+          - goarch: arm
+            goos: windows
+          - goarch: arm64
+            goos: windows
     steps:
     - uses: actions/checkout@main
     - uses: wangyoucao577/go-release-action@master
