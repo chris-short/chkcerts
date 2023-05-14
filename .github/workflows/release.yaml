@@ -6,6 +6,10 @@ on:
     tags:
       - 'v*'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
     build-release:
       runs-on: ubuntu-latest
@@ -16,10 +20,15 @@ jobs:
           with:
             fetch-depth: 0
 
+        - name: Running govulncheck
+          uses: Templum/govulncheck-action@v0.10.1
+
         - name: Set up Go ⚙️
           uses: actions/setup-go@v4
           with:
             go-version: '>=1.18.0'
+          with:
+            github-token: ${{ secrets.GH_PAT }}
 
         - name: Release Go binaries 🎁
           uses: goreleaser/goreleaser-action@master
