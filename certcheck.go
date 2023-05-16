@@ -1,6 +1,6 @@
 // Usage:
 //
-//   certcheck https://www.example.com
+//   go run certcheck.go https://www.example.com
 //
 // Output:
 //
@@ -46,6 +46,14 @@ func main() {
 	defer resp.Body.Close()
 
 	certs := resp.TLS.PeerCertificates
+	var validChain bool = true
+	for i := 0; i < len(certs)-1; i++ {
+		if certs[i].Issuer.CommonName != certs[i+1].Subject.CommonName {
+			validChain = false
+			break
+		}
+	}
+
 	for _, cert := range certs {
 		fmt.Printf("Subject: %s\n", cert.Subject.CommonName)
 		fmt.Printf("Issuer: %s\n", cert.Issuer.CommonName)
@@ -56,5 +64,11 @@ func main() {
 		fmt.Printf("IP Addresses: %v\n", cert.IPAddresses)
 		fmt.Printf("Signature algorithm: %s\n", cert.SignatureAlgorithm.String())
 		fmt.Println("-----")
+	}
+
+	if validChain {
+		fmt.Println("Certificate chain is valid and in the correct order.")
+	} else {
+		fmt.Println("Certificate chain is invalid or not in the correct order.")
 	}
 }

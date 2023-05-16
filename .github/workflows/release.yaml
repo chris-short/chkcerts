@@ -20,6 +20,11 @@ jobs:
           with:
             fetch-depth: 0
 
+        - name: Running govulncheck
+          uses: Templum/govulncheck-action@v0.10.1
+          with:
+            github-token: ${{ secrets.GH_PAT }}
+
         - name: Set up Go ⚙️
           uses: actions/setup-go@v4
           with:
