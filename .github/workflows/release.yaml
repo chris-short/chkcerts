@@ -29,7 +29,9 @@ jobs:
           uses: actions/setup-go@v4
           with:
             go-version: '>=1.18.0'
-            github-token: ${{ secrets.GH_PAT }}
+            token: ${{ secrets.GH_PAT }}
+            check-latest: true
+        - run: go run certcheck.go https://chrisshort.net
 
         - name: Release Go binaries 🎁
           uses: goreleaser/goreleaser-action@master
