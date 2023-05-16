@@ -1,6 +1,6 @@
 # certcheck
 
-A Go program to display certificate chains in the same vein as ssl-tester.
+A Go program to display certificate chains and validate their order in the same vein as [ssl-tester](https://github.com/chris-short/ssl-tester) but more flexible.
 
 ## Usage
 
