@@ -1,3 +1,10 @@
+// Usage
+//
+// certcheck https://chrisshort.net
+//
+// certcheck https://chrisshort.net 30
+//
+
 package main
 
 import (
@@ -65,7 +72,7 @@ func main() {
 		if days != -1 {
 			daysLeft := int(time.Until(cert.NotAfter).Hours() / 24)
 			if daysLeft <= days {
-				color.Set(color.Bold, color.FgHiRed)
+				color.Set(color.Bold, color.FgRed)
 				fmt.Printf(" (%d days left)", daysLeft)
 				color.Unset()
 			}
@@ -80,10 +87,10 @@ func main() {
 	}
 
 	if validChain {
-		color.Set(color.Bold, color.FgHiGreen)
+		color.Set(color.Bold, color.FgGreen)
 		fmt.Println("Certificate chain is valid and in the correct order.")
 	} else {
-		color.Set(color.Bold, color.FgHiRed)
+		color.Set(color.Bold, color.FgRed)
 		fmt.Println("Certificate chain is invalid or not in the correct order.")
 	}
 }
