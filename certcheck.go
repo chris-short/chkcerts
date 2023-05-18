@@ -1,17 +1,9 @@
-// Usage:
+// Usage
 //
-//   go run certcheck.go https://www.example.com
+// go run certcheck.go https://chrisshort.net
 //
-// Output:
+// go run certcheck.go https://chrisshort.net 30
 //
-//   Subject: www.example.com
-//   Issuer: Google Inc
-//   Valid from: 2020-01-01 00:00:00 +0000 UTC
-//   Valid until: 2030-01-01 00:00:00 +0000 UTC
-//   Serial number: 46d1c9e7a9e9f9e4
-//   DNS Names: [www.example.com]
-//   IP Addresses: []
-//   Signature algorithm: sha256WithRSAEncryption
 
 package main
 
@@ -20,15 +12,32 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
+	"time"
+
+	"errors"
+
+	"github.com/fatih/color"
 )
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Println("Please provide a URL (include https://)")
+	if len(os.Args) < 2 || len(os.Args) > 3 {
+		fmt.Println("Please provide a URL (include https://) and an optional number of days")
 		os.Exit(1)
 	}
 
 	url := os.Args[1]
+	var days int = -1 // Default value if days argument is not provided
+
+	if len(os.Args) == 3 {
+		daysStr := os.Args[2]
+		var err error
+		days, err = parseDays(daysStr)
+		if err != nil {
+			fmt.Println("Invalid number of days:", err)
+			os.Exit(1)
+		}
+	}
 
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{
@@ -58,7 +67,18 @@ func main() {
 		fmt.Printf("Subject: %s\n", cert.Subject.CommonName)
 		fmt.Printf("Issuer: %s\n", cert.Issuer.CommonName)
 		fmt.Printf("Valid from: %s\n", cert.NotBefore)
-		fmt.Printf("Valid until: %s\n", cert.NotAfter)
+		fmt.Printf("Valid until: %s", cert.NotAfter)
+
+		if days != -1 {
+			daysLeft := int(time.Until(cert.NotAfter).Hours() / 24)
+			if daysLeft <= days {
+				color.Set(color.Bold, color.FgRed)
+				fmt.Printf(" (%d days left)", daysLeft)
+				color.Unset()
+			}
+		}
+
+		fmt.Println()
 		fmt.Printf("Serial number: %s\n", cert.SerialNumber.String())
 		fmt.Printf("DNS Names: %v\n", cert.DNSNames)
 		fmt.Printf("IP Addresses: %v\n", cert.IPAddresses)
@@ -67,8 +87,21 @@ func main() {
 	}
 
 	if validChain {
+		color.Set(color.Bold, color.FgGreen)
 		fmt.Println("Certificate chain is valid and in the correct order.")
 	} else {
+		color.Set(color.Bold, color.FgRed)
 		fmt.Println("Certificate chain is invalid or not in the correct order.")
 	}
+}
+
+func parseDays(daysStr string) (int, error) {
+	days, err := strconv.Atoi(daysStr)
+	if err != nil {
+		return 0, err
+	}
+	if days < 0 {
+		return 0, errors.New("number of days cannot be negative")
+	}
+	return days, nil
 }
