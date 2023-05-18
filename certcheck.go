@@ -1,8 +1,8 @@
 // Usage
 //
-// certcheck https://chrisshort.net
+// go run certcheck.go https://chrisshort.net
 //
-// certcheck https://chrisshort.net 30
+// go run certcheck.go https://chrisshort.net 30
 //
 
 package main
