@@ -2,8 +2,6 @@
 //
 // go run certcheck.go https://chrisshort.net
 //
-// go run certcheck.go https://chrisshort.net 30
-//
 
 package main
 
@@ -33,7 +31,7 @@ func main() {
 	url := os.Args[1]
 	var days int = -1 // Default value if days argument is not provided
 
-	/// Check if the number of days argument is provided
+	// Check if the number of days argument is provided
 	if len(os.Args) == 3 {
 		daysStr := os.Args[2]
 		var err error
@@ -111,6 +109,12 @@ func main() {
 		// Calculate and print the SHA-256 fingerprint
 		fingerprint := sha256.Sum256(cert.Raw)
 		fmt.Printf("Fingerprint (SHA-256): %s\n", hex.EncodeToString(fingerprint[:]))
+
+		// Check if the HSTS header is present
+		hstsHeader := resp.Header.Get("Strict-Transport-Security")
+		if hstsHeader != "" {
+			fmt.Println("HSTS Header:", hstsHeader)
+		}
 
 		fmt.Println("-----")
 	}
