@@ -91,6 +91,7 @@ func main() {
 			fmt.Printf("Cipher in use: %s\n", tls.CipherSuiteName(state.CipherSuite))
 		}
 
+		// Print the signature algorithm
 		fmt.Printf("Signature algorithm: %s\n", cert.SignatureAlgorithm.String())
 
 		// Calculate and print the SHA-256 fingerprint
