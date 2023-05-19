@@ -8,7 +8,9 @@
 package main
 
 import (
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"os"
@@ -82,7 +84,19 @@ func main() {
 		fmt.Printf("Serial number: %s\n", cert.SerialNumber.String())
 		fmt.Printf("DNS Names: %v\n", cert.DNSNames)
 		fmt.Printf("IP Addresses: %v\n", cert.IPAddresses)
+
+		// Obtain the cipher information
+		state := resp.TLS
+		if state != nil {
+			fmt.Printf("Cipher in use: %s\n", tls.CipherSuiteName(state.CipherSuite))
+		}
+
 		fmt.Printf("Signature algorithm: %s\n", cert.SignatureAlgorithm.String())
+
+		// Calculate and print the SHA-256 fingerprint
+		fingerprint := sha256.Sum256(cert.Raw)
+		fmt.Printf("Fingerprint (SHA-256): %s\n", hex.EncodeToString(fingerprint[:]))
+
 		fmt.Println("-----")
 	}
 
