@@ -90,6 +90,12 @@ func main() {
 		fmt.Printf("IP Addresses: %v\n", cert.IPAddresses)
 		fmt.Printf("Signature algorithm: %s\n", cert.SignatureAlgorithm.String())
 
+		// Obtain the cipher information
+		state := resp.TLS
+		if state != nil {
+			fmt.Printf("Cipher in use: %s\n", tls.CipherSuiteName(state.CipherSuite))
+		}
+
 		// Print KeyUsage information if available
 		if cert.KeyUsage != 0 {
 			fmt.Println("KeyUsage:")
