@@ -29,9 +29,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Parse the URL and number of days
 	url := os.Args[1]
 	var days int = -1 // Default value if days argument is not provided
 
+	/// Check if the number of days argument is provided
 	if len(os.Args) == 3 {
 		daysStr := os.Args[2]
 		var err error
@@ -44,12 +46,14 @@ func main() {
 
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true, // allow self-signed certificates
+			// This is required to allow self-signed certificates
+			InsecureSkipVerify: true,
 		},
 	}
 
 	client := &http.Client{Transport: tr}
 
+	// Check if the URL is valid
 	resp, err := client.Get(url)
 	if err != nil {
 		fmt.Printf("Error connecting to %s: %s\n", url, err)
@@ -57,6 +61,7 @@ func main() {
 	}
 	defer resp.Body.Close()
 
+	// Check if the response was successful
 	certs := resp.TLS.PeerCertificates
 	var validChain bool = true
 	for i := 0; i < len(certs)-1; i++ {
@@ -72,6 +77,7 @@ func main() {
 		fmt.Printf("Valid from: %s\n", cert.NotBefore)
 		fmt.Printf("Valid until: %s", cert.NotAfter)
 
+		// Check if the certificate is expired
 		if days != -1 {
 			daysLeft := int(time.Until(cert.NotAfter).Hours() / 24)
 			if daysLeft <= days {
@@ -109,6 +115,7 @@ func main() {
 		fmt.Println("-----")
 	}
 
+	// Print the validity of the certificate chain
 	if validChain {
 		color.Set(color.Bold, color.FgGreen)
 		fmt.Println("Certificate chain is valid and in the correct order.")
@@ -118,6 +125,7 @@ func main() {
 	}
 }
 
+// printKeyUsage prints the key usage flags of a certificate.
 func printKeyUsage(keyUsage x509.KeyUsage) {
 	usageStrings := []string{
 		"Digital Signature",
@@ -131,6 +139,7 @@ func printKeyUsage(keyUsage x509.KeyUsage) {
 		"Decipher Only",
 	}
 
+	// Print the key usage flags of a certificate.
 	for i, usage := range usageStrings {
 		if keyUsage&(1<<i) != 0 {
 			fmt.Printf("- %s\n", usage)
@@ -138,6 +147,7 @@ func printKeyUsage(keyUsage x509.KeyUsage) {
 	}
 }
 
+// parseDays parses the number of days from a string.
 func parseDays(daysStr string) (int, error) {
 	days, err := strconv.Atoi(daysStr)
 	if err != nil {
