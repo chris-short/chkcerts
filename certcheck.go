@@ -2,7 +2,7 @@
 //
 // go run certcheck.go https://chrisshort.net
 //
-
+// go run certcheck.go https://chrisshort.net
 package main
 
 import (
