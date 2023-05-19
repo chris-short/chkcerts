@@ -10,6 +10,7 @@ package main
 import (
 	"crypto/sha256"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -75,23 +76,25 @@ func main() {
 			daysLeft := int(time.Until(cert.NotAfter).Hours() / 24)
 			if daysLeft <= days {
 				color.Set(color.Bold, color.FgRed)
-				fmt.Printf(" (%d days left)", daysLeft)
+				fmt.Printf(" (%d days left)\n", daysLeft)
 				color.Unset()
+			} else {
+				fmt.Println()
 			}
+		} else {
+			fmt.Println()
 		}
 
-		fmt.Println()
 		fmt.Printf("Serial number: %s\n", cert.SerialNumber.String())
 		fmt.Printf("DNS Names: %v\n", cert.DNSNames)
 		fmt.Printf("IP Addresses: %v\n", cert.IPAddresses)
-
-		// Obtain the cipher information
-		state := resp.TLS
-		if state != nil {
-			fmt.Printf("Cipher in use: %s\n", tls.CipherSuiteName(state.CipherSuite))
-		}
-
 		fmt.Printf("Signature algorithm: %s\n", cert.SignatureAlgorithm.String())
+
+		// Print KeyUsage information if available
+		if cert.KeyUsage != 0 {
+			fmt.Println("KeyUsage:")
+			printKeyUsage(cert.KeyUsage)
+		}
 
 		// Calculate and print the SHA-256 fingerprint
 		fingerprint := sha256.Sum256(cert.Raw)
@@ -106,6 +109,26 @@ func main() {
 	} else {
 		color.Set(color.Bold, color.FgRed)
 		fmt.Println("Certificate chain is invalid or not in the correct order.")
+	}
+}
+
+func printKeyUsage(keyUsage x509.KeyUsage) {
+	usageStrings := []string{
+		"Digital Signature",
+		"Content Commitment",
+		"Key Encipherment",
+		"Data Encipherment",
+		"Key Agreement",
+		"Certificate Signing",
+		"CRL Signing",
+		"Encipher Only",
+		"Decipher Only",
+	}
+
+	for i, usage := range usageStrings {
+		if keyUsage&(1<<i) != 0 {
+			fmt.Printf("- %s\n", usage)
+		}
 	}
 }
 
