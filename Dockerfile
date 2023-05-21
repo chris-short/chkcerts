@@ -1,6 +1,10 @@
 # Stage 1: Build Stage
 FROM public.ecr.aws/docker/library/golang:alpine AS builder
 
+LABEL org.opencontainers.image.source=https://github.com/chris-short/certcheck
+LABEL org.opencontainers.image.description="certcheck: A Go program to display certificate chains simply and quickly with an easy to remember syntax"
+LABEL org.opencontainers.image.licenses="Apache-2.0 license"
+
 WORKDIR /certcheck
 
 # Copy the source code into the container
