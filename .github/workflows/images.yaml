@@ -1,0 +1,57 @@
+---
+name: images
+
+on:
+  push:
+    branches:
+      - 'main'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+    build-release:
+      runs-on: ubuntu-latest
+
+      steps:
+
+        - name: Clone the repository
+          uses: actions/checkout@v2
+
+        - name: Buildah Action
+          id: build-image
+          uses: redhat-actions/buildah-build@v2
+          with:
+            image: ${{ env.IMAGE_NAME }}
+            tags: latest ${{ github.sha }}
+
+        - name: Log in to the GitHub Container registry
+          uses: redhat-actions/podman-login@v1
+          with:
+            registry: ${{ env.GHCR }}
+            username: ${{ github.actor }}
+            password: ${{ secrets.GITHUB_TOKEN }}
+
+        - name: Push to GitHub Container Repository
+          id: push-to-ghcr
+          uses: redhat-actions/push-to-registry@v2
+          with:
+            image: ${{ steps.build-image.outputs.image }}
+            tags: ${{ steps.build-image.outputs.tags }}
+            registry: ${{ secrets.GHCR }}
+
+        - name: Log in to the Docker Hub
+          uses: redhat-actions/podman-login@v1
+          with:
+            registry: ${{ secrets.DOCKER }}
+            username: ${{ secrets.DOCKERHUB_USERNAME }}
+            password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+        - name: Push to GitHub Container Repository
+          id: push-to-ghcr
+          uses: redhat-actions/push-to-registry@v2
+          with:
+            image: ${{ steps.build-image.outputs.image }}
+            tags: ${{ steps.build-image.outputs.tags }}
+            registry: ${{ env.DOCKER }}
