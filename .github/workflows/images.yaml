@@ -48,8 +48,8 @@ jobs:
             username: ${{ secrets.DOCKERHUB_USERNAME }}
             password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
-        - name: Push to GitHub Container Repository
-          id: push-to-ghcr
+        - name: Push to Docker Hub
+          id: push-to-docker
           uses: redhat-actions/push-to-registry@v2
           with:
             image: ${{ steps.build-image.outputs.image }}
