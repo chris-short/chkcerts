@@ -1,4 +1,4 @@
-module certcheck
+module chkcerts
 
 go 1.18
 
