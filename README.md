@@ -1,12 +1,12 @@
-# certcheck
+# chkcerts
 
 A Go program to display certificate chains and validate their order in the same vein as [ssl-tester](https://github.com/chris-short/ssl-tester) but more flexible.
 
 ## Usage
 
-	certcheck https://chrisshort.net
+	chkcerts https://chrisshort.net
 
-	certcheck https://chrisshort.net 90
+	chkcerts https://chrisshort.net 90
 
 ### Example Output (no days)
 
