@@ -31,7 +31,7 @@ jobs:
             go-version: '>=1.18.0'
             token: ${{ secrets.GH_PAT }}
             check-latest: true
-        - run: go run certcheck.go https://chrisshort.net 90
+        - run: go run chkcerts.go https://chrisshort.net 90
 
         - name: Release Go binaries 🎁
           uses: goreleaser/goreleaser-action@master
