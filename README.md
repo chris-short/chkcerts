@@ -1,3 +1,15 @@
+![GitHub](https://img.shields.io/github/license/chris-short/chkcerts)
+[![release](https://github.com/chris-short/chkcerts/actions/workflows/release.yaml/badge.svg)](https://github.com/chris-short/chkcerts/actions/workflows/release.yaml)
+![GitHub release (with filter)](https://img.shields.io/github/v/release/chris-short/chkcerts)
+![GitHub all releases](https://img.shields.io/github/downloads/chris-short/chkcerts/total)
+![GitHub repo size](https://img.shields.io/github/repo-size/chris-short/chkcerts)
+![GitHub contributors](https://img.shields.io/github/contributors/chris-short/chkcerts)
+
+![Twitter Follow](https://img.shields.io/twitter/follow/ChrisShort)
+
+
+
+
 # chkcerts
 
 A Go program to display certificate chains and validate their order in the same vein as [ssl-tester](https://github.com/chris-short/ssl-tester) but more flexible.
