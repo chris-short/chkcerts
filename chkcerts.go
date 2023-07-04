@@ -2,7 +2,7 @@
 //
 // go run certcheck.go https://chrisshort.net
 //
-// go run certcheck.go https://chrisshort.net
+// go run certcheck.go https://chrisshort.net 90
 package main
 
 import (
@@ -23,7 +23,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 || len(os.Args) > 3 {
-		fmt.Println("Please provide a URL (include https://) and an optional number of days")
+		fmt.Println("Please provide a URL (include https://) and an optional number of days to highlight expiring certificates")
 		os.Exit(1)
 	}
 
@@ -44,7 +44,8 @@ func main() {
 
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			// This is required to allow self-signed certificates
+			// This is required to allow self-signed certificates to be checked
+			// It's my opinion that this is a bad idea, but it's the only way to accommodate some users
 			InsecureSkipVerify: true,
 		},
 	}
