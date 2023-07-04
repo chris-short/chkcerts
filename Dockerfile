@@ -5,7 +5,7 @@ LABEL org.opencontainers.image.source=https://github.com/chris-short/chkcerts
 LABEL org.opencontainers.image.description="certcheck: A Go program to display certificate chains simply and quickly with an easy to remember syntax"
 LABEL org.opencontainers.image.licenses="Apache-2.0 license"
 
-WORKDIR /certcheck
+WORKDIR /chkcerts
 
 # Copy the source code into the container
 COPY . .
