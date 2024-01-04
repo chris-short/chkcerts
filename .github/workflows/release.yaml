@@ -1,5 +1,5 @@
 ---
-name: release
+name: Build Release
 
 on:
   push:
