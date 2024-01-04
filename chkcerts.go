@@ -1,8 +1,8 @@
 // Usage
 //
-// go run certcheck.go https://chrisshort.net
+// go run chkcerts.go https://chrisshort.net
 //
-// go run certcheck.go https://chrisshort.net 90
+// go run chkcerts.go https://chrisshort.net 90
 package main
 
 import (

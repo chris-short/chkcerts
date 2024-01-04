@@ -2,7 +2,7 @@
 FROM public.ecr.aws/docker/library/golang:alpine AS builder
 
 LABEL org.opencontainers.image.source=https://github.com/chris-short/chkcerts
-LABEL org.opencontainers.image.description="certcheck: A Go program to display certificate chains simply and quickly with an easy to remember syntax"
+LABEL org.opencontainers.image.description="chkcerts: A Go program to display certificate chains simply and quickly with an easy to remember syntax"
 LABEL org.opencontainers.image.licenses="Apache-2.0 license"
 
 WORKDIR /chkcerts
