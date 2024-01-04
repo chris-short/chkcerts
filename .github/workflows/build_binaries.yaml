@@ -1,5 +1,5 @@
 ---
-name: Build Release
+name: Build Binaries
 
 on:
   push:
