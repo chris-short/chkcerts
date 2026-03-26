@@ -1,42 +1,56 @@
 ---
-name: Build Binaries
+name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-    build-release:
-      runs-on: ubuntu-latest
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      security-events: write
 
-      steps:
-        - name: Checkout 🛎
-          uses: actions/checkout@v3
-          with:
-            fetch-depth: 0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.ACTIONS_TOKEN }}
 
-        - name: Running govulncheck
-          uses: Templum/govulncheck-action@v0.10.1
-          with:
-            github-token: ${{ secrets.ACTIONS_TOKEN }}
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
 
-        - name: Set up Go ⚙️
-          uses: actions/setup-go@v4
-          with:
-            go-version: '>=1.18.0'
-            token: ${{ secrets.GITHUB_TOKEN }}
-            check-latest: true
-        - run: go run chkcerts.go https://chrisshort.net 90
+      - name: Run govulncheck
+        uses: Templum/govulncheck-action@v1.0.1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-        - name: Release Go binaries 🎁
-          uses: goreleaser/goreleaser-action@master
-          with:
-            version: latest
-            args: release --clean
-          env:
-            GITHUB_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
+      - name: Smoke test
+        run: go run chkcerts.go https://chrisshort.net 90
+
+      - name: Generate and push version tag
+        run: |
+          VERSION="v0.$(date +'%Y%m%d').${{ github.run_number }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$VERSION"
+          git push origin "$VERSION"
+
+      - name: Release
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
