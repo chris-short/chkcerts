@@ -33,7 +33,7 @@ jobs:
       - name: Run govulncheck
         uses: golang/govulncheck-action@v1.0.4
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repo-checkout: false
 
       - name: Smoke test
         run: go run chkcerts.go https://chrisshort.net 90
