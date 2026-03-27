@@ -158,9 +158,10 @@ func collectRedirectChain(rawURL string) ([]string, *http.Response, error) {
 
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			// This is required to allow self-signed certificates to be checked
-			// It's my opinion that this is a bad idea, but it's the only way to accommodate some users
-			InsecureSkipVerify: true,
+			// InsecureSkipVerify is intentional: this tool's purpose is to inspect certificates,
+			// including self-signed ones that would otherwise fail verification.
+			InsecureSkipVerify: true, //nolint:gosec
+			MinVersion:         tls.VersionTLS12,
 		},
 	}
 
@@ -183,8 +184,9 @@ func collectRedirectChain(rawURL string) ([]string, *http.Response, error) {
 // getCerts dials the given hostname directly over TLS and returns its peer certificates
 // along with the TLS connection state.
 func getCerts(host string) ([]*x509.Certificate, *tls.ConnectionState, error) {
-	conn, err := tls.Dial("tcp", host+":443", &tls.Config{
-		InsecureSkipVerify: true,
+	conn, err := tls.Dial("tcp", host+":443", &tls.Config{ //nolint:gosec
+		InsecureSkipVerify: true, // intentional: allows inspection of self-signed certificates
+		MinVersion:         tls.VersionTLS12,
 		ServerName:         host,
 	})
 	if err != nil {
