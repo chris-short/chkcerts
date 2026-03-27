@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -28,7 +29,7 @@ func main() {
 	}
 
 	// Parse the URL and number of days
-	url := os.Args[1]
+	rawURL := os.Args[1]
 	var days int = -1 // Default value if days argument is not provided
 
 	// Check if the number of days argument is provided
@@ -42,6 +43,119 @@ func main() {
 		}
 	}
 
+	// Collect all unique hosts from the redirect chain, preserving order
+	hosts, finalResp, err := collectRedirectChain(rawURL)
+	if err != nil {
+		fmt.Printf("Error connecting to %s: %s\n", rawURL, err)
+		os.Exit(1)
+	}
+	defer finalResp.Body.Close()
+
+	hstsHeader := finalResp.Header.Get("Strict-Transport-Security")
+
+	for i, host := range hosts {
+		if len(hosts) > 1 {
+			if i == 0 {
+				fmt.Printf("=== Certificate for %s (original) ===\n", host)
+			} else {
+				fmt.Printf("=== Certificate for %s (redirect) ===\n", host)
+			}
+		}
+
+		certs, tlsState, err := getCerts(host)
+		if err != nil {
+			fmt.Printf("Error getting certificate for %s: %s\n", host, err)
+			fmt.Println("-----")
+			continue
+		}
+
+		var validChain bool = true
+		for j := 0; j < len(certs)-1; j++ {
+			if certs[j].Issuer.CommonName != certs[j+1].Subject.CommonName {
+				validChain = false
+				break
+			}
+		}
+
+		for _, cert := range certs {
+			fmt.Printf("Subject: %s\n", cert.Subject.CommonName)
+			fmt.Printf("Issuer: %s\n", cert.Issuer.CommonName)
+			fmt.Printf("Valid from: %s\n", cert.NotBefore)
+			fmt.Printf("Valid until: %s", cert.NotAfter)
+
+			if days != -1 {
+				daysLeft := int(time.Until(cert.NotAfter).Hours() / 24)
+				if daysLeft <= days {
+					color.Set(color.Bold, color.FgRed)
+					fmt.Printf(" (%d days left)\n", daysLeft)
+					color.Unset()
+				} else {
+					fmt.Println()
+				}
+			} else {
+				fmt.Println()
+			}
+
+			fmt.Printf("Serial number: %s\n", cert.SerialNumber.String())
+			fmt.Printf("DNS Names: %v\n", cert.DNSNames)
+			fmt.Printf("IP Addresses: %v\n", cert.IPAddresses)
+			fmt.Printf("Signature algorithm: %s\n", cert.SignatureAlgorithm.String())
+
+			if tlsState != nil {
+				fmt.Printf("Cipher in use: %s\n", tls.CipherSuiteName(tlsState.CipherSuite))
+			}
+
+			if cert.KeyUsage != 0 {
+				fmt.Println("KeyUsage:")
+				printKeyUsage(cert.KeyUsage)
+			}
+
+			fingerprint := sha256.Sum256(cert.Raw)
+			fmt.Printf("Fingerprint (SHA-256): %s\n", hex.EncodeToString(fingerprint[:]))
+
+			// Only print HSTS for the final destination
+			if i == len(hosts)-1 && hstsHeader != "" {
+				fmt.Println("HSTS Header:", hstsHeader)
+			}
+
+			fmt.Println("-----")
+		}
+
+		if validChain {
+			color.Set(color.Bold, color.FgGreen)
+			fmt.Println("Certificate chain is valid and in the correct order.")
+		} else {
+			color.Set(color.Bold, color.FgRed)
+			fmt.Println("Certificate chain is invalid or not in the correct order.")
+		}
+		color.Unset()
+
+		if i < len(hosts)-1 {
+			fmt.Println()
+		}
+	}
+}
+
+// collectRedirectChain follows the redirect chain from the given URL and returns
+// an ordered, deduplicated list of unique hostnames encountered, plus the final response.
+func collectRedirectChain(rawURL string) ([]string, *http.Response, error) {
+	var chain []string
+	seen := make(map[string]bool)
+
+	addHost := func(u string) {
+		parsed, err := url.Parse(u)
+		if err != nil {
+			return
+		}
+		host := parsed.Hostname()
+		if !seen[host] {
+			seen[host] = true
+			chain = append(chain, host)
+		}
+	}
+
+	addHost(rawURL)
+
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			// This is required to allow self-signed certificates to be checked
@@ -50,84 +164,36 @@ func main() {
 		},
 	}
 
-	client := &http.Client{Transport: tr}
+	client := &http.Client{
+		Transport: tr,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			addHost(req.URL.String())
+			return nil
+		},
+	}
 
-	// Check if the URL is valid
-	resp, err := client.Get(url)
+	resp, err := client.Get(rawURL)
 	if err != nil {
-		fmt.Printf("Error connecting to %s: %s\n", url, err)
-		os.Exit(1)
-	}
-	defer resp.Body.Close()
-
-	// Check if the response was successful
-	certs := resp.TLS.PeerCertificates
-	var validChain bool = true
-	for i := 0; i < len(certs)-1; i++ {
-		if certs[i].Issuer.CommonName != certs[i+1].Subject.CommonName {
-			validChain = false
-			break
-		}
+		return nil, nil, err
 	}
 
-	for _, cert := range certs {
-		fmt.Printf("Subject: %s\n", cert.Subject.CommonName)
-		fmt.Printf("Issuer: %s\n", cert.Issuer.CommonName)
-		fmt.Printf("Valid from: %s\n", cert.NotBefore)
-		fmt.Printf("Valid until: %s", cert.NotAfter)
+	return chain, resp, nil
+}
 
-		// Check if the certificate is expired
-		if days != -1 {
-			daysLeft := int(time.Until(cert.NotAfter).Hours() / 24)
-			if daysLeft <= days {
-				color.Set(color.Bold, color.FgRed)
-				fmt.Printf(" (%d days left)\n", daysLeft)
-				color.Unset()
-			} else {
-				fmt.Println()
-			}
-		} else {
-			fmt.Println()
-		}
-
-		fmt.Printf("Serial number: %s\n", cert.SerialNumber.String())
-		fmt.Printf("DNS Names: %v\n", cert.DNSNames)
-		fmt.Printf("IP Addresses: %v\n", cert.IPAddresses)
-		fmt.Printf("Signature algorithm: %s\n", cert.SignatureAlgorithm.String())
-
-		// Obtain the cipher information
-		state := resp.TLS
-		if state != nil {
-			fmt.Printf("Cipher in use: %s\n", tls.CipherSuiteName(state.CipherSuite))
-		}
-
-		// Print KeyUsage information if available
-		if cert.KeyUsage != 0 {
-			fmt.Println("KeyUsage:")
-			printKeyUsage(cert.KeyUsage)
-		}
-
-		// Calculate and print the SHA-256 fingerprint
-		fingerprint := sha256.Sum256(cert.Raw)
-		fmt.Printf("Fingerprint (SHA-256): %s\n", hex.EncodeToString(fingerprint[:]))
-
-		// Check if the HSTS header is present
-		hstsHeader := resp.Header.Get("Strict-Transport-Security")
-		if hstsHeader != "" {
-			fmt.Println("HSTS Header:", hstsHeader)
-		}
-
-		fmt.Println("-----")
+// getCerts dials the given hostname directly over TLS and returns its peer certificates
+// along with the TLS connection state.
+func getCerts(host string) ([]*x509.Certificate, *tls.ConnectionState, error) {
+	conn, err := tls.Dial("tcp", host+":443", &tls.Config{
+		InsecureSkipVerify: true,
+		ServerName:         host,
+	})
+	if err != nil {
+		return nil, nil, err
 	}
+	defer conn.Close()
 
-	// Print the validity of the certificate chain
-	if validChain {
-		color.Set(color.Bold, color.FgGreen)
-		fmt.Println("Certificate chain is valid and in the correct order.")
-	} else {
-		color.Set(color.Bold, color.FgRed)
-		fmt.Println("Certificate chain is invalid or not in the correct order.")
-	}
+	state := conn.ConnectionState()
+	return state.PeerCertificates, &state, nil
 }
 
 // printKeyUsage prints the key usage flags of a certificate.
