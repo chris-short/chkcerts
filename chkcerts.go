@@ -3,6 +3,8 @@
 // go run chkcerts.go https://chrisshort.net
 //
 // go run chkcerts.go https://chrisshort.net 90
+//
+// go run chkcerts.go -k https://self-signed.example.com
 package main
 
 import (
@@ -10,6 +12,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
+	"errors"
+	"flag"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -17,34 +21,34 @@ import (
 	"strconv"
 	"time"
 
-	"errors"
-
 	"github.com/fatih/color"
 )
 
 func main() {
-	if len(os.Args) < 2 || len(os.Args) > 3 {
-		fmt.Println("Please provide a URL (include https://) and an optional number of days to highlight expiring certificates")
+	insecure := flag.Bool("k", false, "skip TLS certificate verification (required for self-signed certificates)")
+	flag.BoolVar(insecure, "insecure", false, "skip TLS certificate verification (required for self-signed certificates)")
+	flag.Parse()
+
+	args := flag.Args()
+	if len(args) < 1 || len(args) > 2 {
+		fmt.Println("Usage: chkcerts [-k] <url> [days]")
+		fmt.Println("  -k, --insecure  skip TLS certificate verification (for self-signed certs)")
 		os.Exit(1)
 	}
 
-	// Parse the URL and number of days
-	rawURL := os.Args[1]
-	var days int = -1 // Default value if days argument is not provided
+	rawURL := args[0]
+	var days int = -1
 
-	// Check if the number of days argument is provided
-	if len(os.Args) == 3 {
-		daysStr := os.Args[2]
+	if len(args) == 2 {
 		var err error
-		days, err = parseDays(daysStr)
+		days, err = parseDays(args[1])
 		if err != nil {
 			fmt.Println("Invalid number of days:", err)
 			os.Exit(1)
 		}
 	}
 
-	// Collect all unique hosts from the redirect chain, preserving order
-	hosts, finalResp, err := collectRedirectChain(rawURL)
+	hosts, finalResp, err := collectRedirectChain(rawURL, *insecure)
 	if err != nil {
 		fmt.Printf("Error connecting to %s: %s\n", rawURL, err)
 		os.Exit(1)
@@ -62,7 +66,7 @@ func main() {
 			}
 		}
 
-		certs, tlsState, err := getCerts(host)
+		certs, tlsState, err := getCerts(host, *insecure)
 		if err != nil {
 			fmt.Printf("Error getting certificate for %s: %s\n", host, err)
 			fmt.Println("-----")
@@ -138,7 +142,7 @@ func main() {
 
 // collectRedirectChain follows the redirect chain from the given URL and returns
 // an ordered, deduplicated list of unique hostnames encountered, plus the final response.
-func collectRedirectChain(rawURL string) ([]string, *http.Response, error) {
+func collectRedirectChain(rawURL string, insecure bool) ([]string, *http.Response, error) {
 	var chain []string
 	seen := make(map[string]bool)
 
@@ -156,14 +160,14 @@ func collectRedirectChain(rawURL string) ([]string, *http.Response, error) {
 
 	addHost(rawURL)
 
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			// InsecureSkipVerify is intentional: this tool's purpose is to inspect certificates,
-			// including self-signed ones that would otherwise fail verification.
-			InsecureSkipVerify: true, //nolint:gosec
-			MinVersion:         tls.VersionTLS12,
-		},
+	tlsCfg := &tls.Config{
+		MinVersion: tls.VersionTLS12,
 	}
+	if insecure {
+		tlsCfg.InsecureSkipVerify = true //nolint:gosec // user opted in via -k/--insecure
+	}
+
+	tr := &http.Transport{TLSClientConfig: tlsCfg}
 
 	client := &http.Client{
 		Transport: tr,
@@ -183,12 +187,16 @@ func collectRedirectChain(rawURL string) ([]string, *http.Response, error) {
 
 // getCerts dials the given hostname directly over TLS and returns its peer certificates
 // along with the TLS connection state.
-func getCerts(host string) ([]*x509.Certificate, *tls.ConnectionState, error) {
-	conn, err := tls.Dial("tcp", host+":443", &tls.Config{ //nolint:gosec
-		InsecureSkipVerify: true, // intentional: allows inspection of self-signed certificates
-		MinVersion:         tls.VersionTLS12,
-		ServerName:         host,
-	})
+func getCerts(host string, insecure bool) ([]*x509.Certificate, *tls.ConnectionState, error) {
+	tlsCfg := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		ServerName: host,
+	}
+	if insecure {
+		tlsCfg.InsecureSkipVerify = true //nolint:gosec // user opted in via -k/--insecure
+	}
+
+	conn, err := tls.Dial("tcp", host+":443", tlsCfg)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -212,7 +220,6 @@ func printKeyUsage(keyUsage x509.KeyUsage) {
 		"Decipher Only",
 	}
 
-	// Print the key usage flags of a certificate.
 	for i, usage := range usageStrings {
 		if keyUsage&(1<<i) != 0 {
 			fmt.Printf("- %s\n", usage)
