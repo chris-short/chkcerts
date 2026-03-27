@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fatih/color"
@@ -60,15 +61,15 @@ func main() {
 	for i, host := range hosts {
 		if len(hosts) > 1 {
 			if i == 0 {
-				fmt.Printf("=== Certificate for %s (original) ===\n", host)
+				fmt.Printf("=== Certificate for %s (original) ===\n", sanitizeHost(host))
 			} else {
-				fmt.Printf("=== Certificate for %s (redirect) ===\n", host)
+				fmt.Printf("=== Certificate for %s (redirect) ===\n", sanitizeHost(host))
 			}
 		}
 
 		certs, tlsState, err := getCerts(host, *insecure)
 		if err != nil {
-			fmt.Printf("Error getting certificate for %s: %s\n", host, err)
+			fmt.Printf("Error getting certificate for %s: %s\n", sanitizeHost(host), err)
 			fmt.Println("-----")
 			continue
 		}
@@ -225,6 +226,16 @@ func printKeyUsage(keyUsage x509.KeyUsage) {
 			fmt.Printf("- %s\n", usage)
 		}
 	}
+}
+
+// sanitizeHost strips control characters from a hostname to prevent log injection.
+func sanitizeHost(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 32 || r == 127 {
+			return -1
+		}
+		return r
+	}, s)
 }
 
 // parseDays parses the number of days from a string.
