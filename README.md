@@ -14,9 +14,36 @@ A Go program to display certificate chains and validate their order in the same 
 
 ## Usage
 
+	chkcerts <url> [days]
+	chkcerts -k <url> [days]
+
 	chkcerts https://chrisshort.net
 
 	chkcerts https://chrisshort.net 90
+
+	chkcerts -k https://self-signed.example.com
+
+### Flags
+
+| Flag | Description |
+|------|-------------|
+| `-k`, `--insecure` | Skip TLS certificate verification. Required for self-signed certificates that would otherwise fail validation. |
+
+### Redirect handling
+
+If a URL redirects to a different domain, `chkcerts` will display the certificate for each unique host in the redirect chain, not just the final destination.
+
+	chkcerts https://commandlineheroes.com
+
+	=== Certificate for commandlineheroes.com (original) ===
+	Subject: commandlineheroes.com
+	...
+	Certificate chain is valid and in the correct order.
+
+	=== Certificate for www.redhat.com (redirect) ===
+	Subject: www.redhat.com
+	...
+	Certificate chain is valid and in the correct order.
 
 ### Example Output (no days)
 
