@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -228,14 +229,23 @@ func printKeyUsage(keyUsage x509.KeyUsage) {
 	}
 }
 
-// sanitizeHost strips control characters from a hostname to prevent log injection.
+// validHostRE matches only legal hostname characters (letters, digits, hyphens, dots).
+var validHostRE = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9\-\.]*$`)
+
+// sanitizeHost strips control characters then validates against a strict hostname
+// pattern, returning "[invalid host]" if the result doesn't look like a real hostname.
+// The regexp check breaks CodeQL's taint chain for go/log-injection.
 func sanitizeHost(s string) string {
-	return strings.Map(func(r rune) rune {
+	cleaned := strings.Map(func(r rune) rune {
 		if r < 32 || r == 127 {
 			return -1
 		}
 		return r
 	}, s)
+	if !validHostRE.MatchString(cleaned) {
+		return "[invalid host]"
+	}
+	return cleaned
 }
 
 // parseDays parses the number of days from a string.
