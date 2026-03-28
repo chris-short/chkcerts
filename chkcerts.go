@@ -3,6 +3,8 @@
 // go run chkcerts.go https://chrisshort.net
 //
 // go run chkcerts.go https://chrisshort.net 90
+//
+// go run chkcerts.go -k https://self-signed.example.com
 package main
 
 import (
@@ -10,124 +12,200 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
+	"errors"
+	"flag"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
-
-	"errors"
 
 	"github.com/fatih/color"
 )
 
 func main() {
-	if len(os.Args) < 2 || len(os.Args) > 3 {
-		fmt.Println("Please provide a URL (include https://) and an optional number of days to highlight expiring certificates")
+	insecure := flag.Bool("k", false, "skip TLS certificate verification (required for self-signed certificates)")
+	flag.BoolVar(insecure, "insecure", false, "skip TLS certificate verification (required for self-signed certificates)")
+	flag.Parse()
+
+	args := flag.Args()
+	if len(args) < 1 || len(args) > 2 {
+		fmt.Println("Usage: chkcerts [-k] <url> [days]")
+		fmt.Println("  -k, --insecure  skip TLS certificate verification (for self-signed certs)")
 		os.Exit(1)
 	}
 
-	// Parse the URL and number of days
-	url := os.Args[1]
-	var days int = -1 // Default value if days argument is not provided
+	rawURL := args[0]
+	var days int = -1
 
-	// Check if the number of days argument is provided
-	if len(os.Args) == 3 {
-		daysStr := os.Args[2]
+	if len(args) == 2 {
 		var err error
-		days, err = parseDays(daysStr)
+		days, err = parseDays(args[1])
 		if err != nil {
 			fmt.Println("Invalid number of days:", err)
 			os.Exit(1)
 		}
 	}
 
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			// This is required to allow self-signed certificates to be checked
-			// It's my opinion that this is a bad idea, but it's the only way to accommodate some users
-			InsecureSkipVerify: true,
-		},
-	}
-
-	client := &http.Client{Transport: tr}
-
-	// Check if the URL is valid
-	resp, err := client.Get(url)
+	hosts, finalResp, err := collectRedirectChain(rawURL, *insecure)
 	if err != nil {
-		fmt.Printf("Error connecting to %s: %s\n", url, err)
+		fmt.Printf("Error connecting to %s: %s\n", rawURL, err)
 		os.Exit(1)
 	}
-	defer resp.Body.Close()
+	defer finalResp.Body.Close()
 
-	// Check if the response was successful
-	certs := resp.TLS.PeerCertificates
-	var validChain bool = true
-	for i := 0; i < len(certs)-1; i++ {
-		if certs[i].Issuer.CommonName != certs[i+1].Subject.CommonName {
-			validChain = false
-			break
+	hstsHeader := finalResp.Header.Get("Strict-Transport-Security")
+
+	for i, host := range hosts {
+		if len(hosts) > 1 {
+			if i == 0 {
+				fmt.Printf("=== Certificate for %s (original) ===\n", sanitizeHost(host))
+			} else {
+				fmt.Printf("=== Certificate for %s (redirect) ===\n", sanitizeHost(host))
+			}
 		}
-	}
 
-	for _, cert := range certs {
-		fmt.Printf("Subject: %s\n", cert.Subject.CommonName)
-		fmt.Printf("Issuer: %s\n", cert.Issuer.CommonName)
-		fmt.Printf("Valid from: %s\n", cert.NotBefore)
-		fmt.Printf("Valid until: %s", cert.NotAfter)
+		certs, tlsState, err := getCerts(host, *insecure)
+		if err != nil {
+			fmt.Printf("Error getting certificate for %s: %s\n", sanitizeHost(host), err)
+			fmt.Println("-----")
+			continue
+		}
 
-		// Check if the certificate is expired
-		if days != -1 {
-			daysLeft := int(time.Until(cert.NotAfter).Hours() / 24)
-			if daysLeft <= days {
-				color.Set(color.Bold, color.FgRed)
-				fmt.Printf(" (%d days left)\n", daysLeft)
-				color.Unset()
+		var validChain bool = true
+		for j := 0; j < len(certs)-1; j++ {
+			if certs[j].Issuer.CommonName != certs[j+1].Subject.CommonName {
+				validChain = false
+				break
+			}
+		}
+
+		for _, cert := range certs {
+			fmt.Printf("Subject: %s\n", cert.Subject.CommonName)
+			fmt.Printf("Issuer: %s\n", cert.Issuer.CommonName)
+			fmt.Printf("Valid from: %s\n", cert.NotBefore)
+			fmt.Printf("Valid until: %s", cert.NotAfter)
+
+			if days != -1 {
+				daysLeft := int(time.Until(cert.NotAfter).Hours() / 24)
+				if daysLeft <= days {
+					color.Set(color.Bold, color.FgRed)
+					fmt.Printf(" (%d days left)\n", daysLeft)
+					color.Unset()
+				} else {
+					fmt.Println()
+				}
 			} else {
 				fmt.Println()
 			}
+
+			fmt.Printf("Serial number: %s\n", cert.SerialNumber.String())
+			fmt.Printf("DNS Names: %v\n", cert.DNSNames)
+			fmt.Printf("IP Addresses: %v\n", cert.IPAddresses)
+			fmt.Printf("Signature algorithm: %s\n", cert.SignatureAlgorithm.String())
+
+			if tlsState != nil {
+				fmt.Printf("Cipher in use: %s\n", tls.CipherSuiteName(tlsState.CipherSuite))
+			}
+
+			if cert.KeyUsage != 0 {
+				fmt.Println("KeyUsage:")
+				printKeyUsage(cert.KeyUsage)
+			}
+
+			fingerprint := sha256.Sum256(cert.Raw)
+			fmt.Printf("Fingerprint (SHA-256): %s\n", hex.EncodeToString(fingerprint[:]))
+
+			// Only print HSTS for the final destination
+			if i == len(hosts)-1 && hstsHeader != "" {
+				fmt.Println("HSTS Header:", hstsHeader)
+			}
+
+			fmt.Println("-----")
+		}
+
+		if validChain {
+			color.Set(color.Bold, color.FgGreen)
+			fmt.Println("Certificate chain is valid and in the correct order.")
 		} else {
+			color.Set(color.Bold, color.FgRed)
+			fmt.Println("Certificate chain is invalid or not in the correct order.")
+		}
+		color.Unset()
+
+		if i < len(hosts)-1 {
 			fmt.Println()
 		}
+	}
+}
 
-		fmt.Printf("Serial number: %s\n", cert.SerialNumber.String())
-		fmt.Printf("DNS Names: %v\n", cert.DNSNames)
-		fmt.Printf("IP Addresses: %v\n", cert.IPAddresses)
-		fmt.Printf("Signature algorithm: %s\n", cert.SignatureAlgorithm.String())
+// collectRedirectChain follows the redirect chain from the given URL and returns
+// an ordered, deduplicated list of unique hostnames encountered, plus the final response.
+func collectRedirectChain(rawURL string, insecure bool) ([]string, *http.Response, error) {
+	var chain []string
+	seen := make(map[string]bool)
 
-		// Obtain the cipher information
-		state := resp.TLS
-		if state != nil {
-			fmt.Printf("Cipher in use: %s\n", tls.CipherSuiteName(state.CipherSuite))
+	addHost := func(u string) {
+		parsed, err := url.Parse(u)
+		if err != nil {
+			return
 		}
-
-		// Print KeyUsage information if available
-		if cert.KeyUsage != 0 {
-			fmt.Println("KeyUsage:")
-			printKeyUsage(cert.KeyUsage)
+		host := parsed.Hostname()
+		if !seen[host] {
+			seen[host] = true
+			chain = append(chain, host)
 		}
-
-		// Calculate and print the SHA-256 fingerprint
-		fingerprint := sha256.Sum256(cert.Raw)
-		fmt.Printf("Fingerprint (SHA-256): %s\n", hex.EncodeToString(fingerprint[:]))
-
-		// Check if the HSTS header is present
-		hstsHeader := resp.Header.Get("Strict-Transport-Security")
-		if hstsHeader != "" {
-			fmt.Println("HSTS Header:", hstsHeader)
-		}
-
-		fmt.Println("-----")
 	}
 
-	// Print the validity of the certificate chain
-	if validChain {
-		color.Set(color.Bold, color.FgGreen)
-		fmt.Println("Certificate chain is valid and in the correct order.")
-	} else {
-		color.Set(color.Bold, color.FgRed)
-		fmt.Println("Certificate chain is invalid or not in the correct order.")
+	addHost(rawURL)
+
+	tlsCfg := &tls.Config{
+		MinVersion: tls.VersionTLS12,
 	}
+	if insecure {
+		tlsCfg.InsecureSkipVerify = true //nolint:gosec // user opted in via -k/--insecure
+	}
+
+	tr := &http.Transport{TLSClientConfig: tlsCfg}
+
+	client := &http.Client{
+		Transport: tr,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			addHost(req.URL.String())
+			return nil
+		},
+	}
+
+	resp, err := client.Get(rawURL)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return chain, resp, nil
+}
+
+// getCerts dials the given hostname directly over TLS and returns its peer certificates
+// along with the TLS connection state.
+func getCerts(host string, insecure bool) ([]*x509.Certificate, *tls.ConnectionState, error) {
+	tlsCfg := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		ServerName: host,
+	}
+	if insecure {
+		tlsCfg.InsecureSkipVerify = true //nolint:gosec // user opted in via -k/--insecure
+	}
+
+	conn, err := tls.Dial("tcp", host+":443", tlsCfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer conn.Close()
+
+	state := conn.ConnectionState()
+	return state.PeerCertificates, &state, nil
 }
 
 // printKeyUsage prints the key usage flags of a certificate.
@@ -144,12 +222,30 @@ func printKeyUsage(keyUsage x509.KeyUsage) {
 		"Decipher Only",
 	}
 
-	// Print the key usage flags of a certificate.
 	for i, usage := range usageStrings {
 		if keyUsage&(1<<i) != 0 {
 			fmt.Printf("- %s\n", usage)
 		}
 	}
+}
+
+// validHostRE matches only legal hostname characters (letters, digits, hyphens, dots).
+var validHostRE = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9\-\.]*$`)
+
+// sanitizeHost strips control characters then validates against a strict hostname
+// pattern, returning "[invalid host]" if the result doesn't look like a real hostname.
+// The regexp check breaks CodeQL's taint chain for go/log-injection.
+func sanitizeHost(s string) string {
+	cleaned := strings.Map(func(r rune) rune {
+		if r < 32 || r == 127 {
+			return -1
+		}
+		return r
+	}, s)
+	if !validHostRE.MatchString(cleaned) {
+		return "[invalid host]"
+	}
+	return cleaned
 }
 
 // parseDays parses the number of days from a string.
