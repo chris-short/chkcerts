@@ -16,10 +16,17 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fatih/color"
 )
+
+func sanitizeForLog(s string) string {
+	s = strings.ReplaceAll(s, "\n", "")
+	s = strings.ReplaceAll(s, "\r", "")
+	return s
+}
 
 func main() {
 	if len(os.Args) < 2 || len(os.Args) > 3 {
@@ -63,12 +70,13 @@ func main() {
 		defer hop.Body.Close()
 
 		isRedirect := hop.StatusCode >= 300 && hop.StatusCode < 400
-		hopURL := hop.Request.URL.String()
+		hopURL := sanitizeForLog(hop.Request.URL.String())
 
 		if len(hops) > 1 {
 			color.Set(color.Bold, color.FgCyan)
 			if isRedirect {
-				fmt.Printf("=== Hop %d: %s → %s (HTTP %d) ===\n\n", i+1, hopURL, hop.Header.Get("Location"), hop.StatusCode)
+				location := sanitizeForLog(hop.Header.Get("Location"))
+				fmt.Printf("=== Hop %d: %s → %s (HTTP %d) ===\n\n", i+1, hopURL, location, hop.StatusCode)
 			} else {
 				fmt.Printf("=== Hop %d: %s (HTTP %d) ===\n\n", i+1, hopURL, hop.StatusCode)
 			}
