@@ -10,13 +10,13 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"time"
-
-	"errors"
 
 	"github.com/fatih/color"
 )
@@ -27,42 +27,110 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Parse the URL and number of days
-	url := os.Args[1]
-	var days int = -1 // Default value if days argument is not provided
+	startURL := os.Args[1]
+	days := -1
 
-	// Check if the number of days argument is provided
 	if len(os.Args) == 3 {
-		daysStr := os.Args[2]
 		var err error
-		days, err = parseDays(daysStr)
+		days, err = parseDays(os.Args[2])
 		if err != nil {
 			fmt.Println("Invalid number of days:", err)
 			os.Exit(1)
 		}
 	}
 
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			// This is required to allow self-signed certificates to be checked
-			// It's my opinion that this is a bad idea, but it's the only way to accommodate some users
-			InsecureSkipVerify: true,
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				// InsecureSkipVerify allows checking self-signed certificates
+				InsecureSkipVerify: true,
+			},
+		},
+		Timeout: 10 * time.Second,
+		// Disable automatic redirect following so we can inspect each hop manually
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
 		},
 	}
 
-	client := &http.Client{Transport: tr}
-
-	// Check if the URL is valid
-	resp, err := client.Get(url)
+	hops, err := followRedirects(client, startURL)
 	if err != nil {
-		fmt.Printf("Error connecting to %s: %s\n", url, err)
+		fmt.Printf("Error: %s\n", err)
 		os.Exit(1)
 	}
-	defer resp.Body.Close()
 
-	// Check if the response was successful
+	for i, hop := range hops {
+		defer hop.Body.Close()
+
+		isRedirect := hop.StatusCode >= 300 && hop.StatusCode < 400
+		hopURL := hop.Request.URL.String()
+
+		if len(hops) > 1 {
+			color.Set(color.Bold, color.FgCyan)
+			if isRedirect {
+				fmt.Printf("=== Hop %d: %s → %s (HTTP %d) ===\n\n", i+1, hopURL, hop.Header.Get("Location"), hop.StatusCode)
+			} else {
+				fmt.Printf("=== Hop %d: %s (HTTP %d) ===\n\n", i+1, hopURL, hop.StatusCode)
+			}
+			color.Unset()
+		}
+
+		if hop.TLS == nil {
+			fmt.Printf("No TLS on %s — skipping cert info\n\n", hopURL)
+			continue
+		}
+
+		printCerts(hop, days)
+	}
+}
+
+// followRedirects manually walks the redirect chain, returning one *http.Response per hop.
+func followRedirects(client *http.Client, startURL string) ([]*http.Response, error) {
+	var hops []*http.Response
+	current := startURL
+
+	for {
+		resp, err := client.Get(current)
+		if err != nil {
+			return hops, fmt.Errorf("connecting to %s: %w", current, err)
+		}
+		hops = append(hops, resp)
+
+		if resp.StatusCode < 300 || resp.StatusCode >= 400 {
+			break
+		}
+
+		location := resp.Header.Get("Location")
+		if location == "" {
+			break
+		}
+
+		loc, err := url.Parse(location)
+		if err != nil {
+			break
+		}
+		if !loc.IsAbs() {
+			base, err := url.Parse(current)
+			if err != nil {
+				break
+			}
+			loc = base.ResolveReference(loc)
+		}
+		current = loc.String()
+
+		// Guard against infinite redirect loops
+		if len(hops) > 10 {
+			return hops, errors.New("too many redirects (>10)")
+		}
+	}
+
+	return hops, nil
+}
+
+// printCerts prints the TLS certificate chain info from a response.
+func printCerts(resp *http.Response, days int) {
 	certs := resp.TLS.PeerCertificates
-	var validChain bool = true
+	validChain := true
 	for i := 0; i < len(certs)-1; i++ {
 		if certs[i].Issuer.CommonName != certs[i+1].Subject.CommonName {
 			validChain = false
@@ -76,7 +144,6 @@ func main() {
 		fmt.Printf("Valid from: %s\n", cert.NotBefore)
 		fmt.Printf("Valid until: %s", cert.NotAfter)
 
-		// Check if the certificate is expired
 		if days != -1 {
 			daysLeft := int(time.Until(cert.NotAfter).Hours() / 24)
 			if daysLeft <= days {
@@ -94,24 +161,16 @@ func main() {
 		fmt.Printf("DNS Names: %v\n", cert.DNSNames)
 		fmt.Printf("IP Addresses: %v\n", cert.IPAddresses)
 		fmt.Printf("Signature algorithm: %s\n", cert.SignatureAlgorithm.String())
+		fmt.Printf("Cipher in use: %s\n", tls.CipherSuiteName(resp.TLS.CipherSuite))
 
-		// Obtain the cipher information
-		state := resp.TLS
-		if state != nil {
-			fmt.Printf("Cipher in use: %s\n", tls.CipherSuiteName(state.CipherSuite))
-		}
-
-		// Print KeyUsage information if available
 		if cert.KeyUsage != 0 {
 			fmt.Println("KeyUsage:")
 			printKeyUsage(cert.KeyUsage)
 		}
 
-		// Calculate and print the SHA-256 fingerprint
 		fingerprint := sha256.Sum256(cert.Raw)
 		fmt.Printf("Fingerprint (SHA-256): %s\n", hex.EncodeToString(fingerprint[:]))
 
-		// Check if the HSTS header is present
 		hstsHeader := resp.Header.Get("Strict-Transport-Security")
 		if hstsHeader != "" {
 			fmt.Println("HSTS Header:", hstsHeader)
@@ -120,7 +179,6 @@ func main() {
 		fmt.Println("-----")
 	}
 
-	// Print the validity of the certificate chain
 	if validChain {
 		color.Set(color.Bold, color.FgGreen)
 		fmt.Println("Certificate chain is valid and in the correct order.")
@@ -128,6 +186,8 @@ func main() {
 		color.Set(color.Bold, color.FgRed)
 		fmt.Println("Certificate chain is invalid or not in the correct order.")
 	}
+	color.Unset()
+	fmt.Println()
 }
 
 // printKeyUsage prints the key usage flags of a certificate.
@@ -144,7 +204,6 @@ func printKeyUsage(keyUsage x509.KeyUsage) {
 		"Decipher Only",
 	}
 
-	// Print the key usage flags of a certificate.
 	for i, usage := range usageStrings {
 		if keyUsage&(1<<i) != 0 {
 			fmt.Printf("- %s\n", usage)
