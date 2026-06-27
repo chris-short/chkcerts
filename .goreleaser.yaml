@@ -26,6 +26,20 @@ archives:
         formats:
           - zip
 
+brews:
+  - name: chkcerts
+    repository:
+      owner: chris-short
+      name: homebrew-chkcerts
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/chris-short/chkcerts
+    description: Display and validate TLS certificate chains from the command line
+    license: MIT
+    test: |
+      system "#{bin}/chkcerts", "https://github.com"
+    install: |
+      bin.install "chkcerts"
+
 changelog:
   sort: asc
   filters:
