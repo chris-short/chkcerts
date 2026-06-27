@@ -12,6 +12,25 @@
 
 A Go program to display certificate chains and validate their order in the same vein as [ssl-tester](https://github.com/chris-short/ssl-tester) but more flexible.
 
+## Installation
+
+### Homebrew (macOS and Linux)
+
+```sh
+brew tap chris-short/chkcerts
+brew install chkcerts
+```
+
+### From source
+
+```sh
+go install github.com/chris-short/chkcerts@latest
+```
+
+### Binary releases
+
+Pre-built binaries for macOS, Linux, and Windows are available on the [releases page](https://github.com/chris-short/chkcerts/releases).
+
 ## Usage
 
 	chkcerts <url> [days]
