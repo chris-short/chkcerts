@@ -3,6 +3,8 @@
 // go run chkcerts.go https://chrisshort.net
 //
 // go run chkcerts.go https://chrisshort.net 90
+//
+// go run chkcerts.go -k https://self-signed.example.com
 package main
 
 import (
@@ -11,10 +13,12 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"errors"
+	"flag"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -22,38 +26,40 @@ import (
 	"github.com/fatih/color"
 )
 
-func sanitizeForLog(s string) string {
-	s = strings.ReplaceAll(s, "\n", "")
-	s = strings.ReplaceAll(s, "\r", "")
-	return s
-}
-
 func main() {
-	if len(os.Args) < 2 || len(os.Args) > 3 {
-		fmt.Println("Please provide a URL (include https://) and an optional number of days to highlight expiring certificates")
+	insecure := flag.Bool("k", false, "skip TLS certificate verification (for self-signed certs)")
+	flag.BoolVar(insecure, "insecure", false, "skip TLS certificate verification (for self-signed certs)")
+	flag.Parse()
+
+	args := flag.Args()
+	if len(args) < 1 || len(args) > 2 {
+		fmt.Println("Usage: chkcerts [-k] <url> [days]")
+		fmt.Println("  -k, --insecure  skip TLS certificate verification (for self-signed certs)")
 		os.Exit(1)
 	}
 
-	startURL := os.Args[1]
+	startURL := args[0]
 	days := -1
 
-	if len(os.Args) == 3 {
+	if len(args) == 2 {
 		var err error
-		days, err = parseDays(os.Args[2])
+		days, err = parseDays(args[1])
 		if err != nil {
 			fmt.Println("Invalid number of days:", err)
 			os.Exit(1)
 		}
 	}
 
+	tlsCfg := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
+	if *insecure {
+		tlsCfg.InsecureSkipVerify = true //nolint:gosec // user opted in via -k/--insecure
+	}
+
 	client := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				// InsecureSkipVerify allows checking self-signed certificates
-				InsecureSkipVerify: true,
-			},
-		},
-		Timeout: 10 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: tlsCfg},
+		Timeout:   10 * time.Second,
 		// Disable automatic redirect following so we can inspect each hop manually
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
@@ -70,12 +76,12 @@ func main() {
 		defer hop.Body.Close()
 
 		isRedirect := hop.StatusCode >= 300 && hop.StatusCode < 400
-		hopURL := sanitizeForLog(hop.Request.URL.String())
+		hopURL := sanitizeURL(hop.Request.URL.String())
 
 		if len(hops) > 1 {
 			color.Set(color.Bold, color.FgCyan)
 			if isRedirect {
-				location := sanitizeForLog(hop.Header.Get("Location"))
+				location := sanitizeURL(hop.Header.Get("Location"))
 				fmt.Printf("=== Hop %d: %s → %s (HTTP %d) ===\n\n", i+1, hopURL, location, hop.StatusCode)
 			} else {
 				fmt.Printf("=== Hop %d: %s (HTTP %d) ===\n\n", i+1, hopURL, hop.StatusCode)
@@ -126,7 +132,6 @@ func followRedirects(client *http.Client, startURL string) ([]*http.Response, er
 		}
 		current = loc.String()
 
-		// Guard against infinite redirect loops
 		if len(hops) > 10 {
 			return hops, errors.New("too many redirects (>10)")
 		}
@@ -217,6 +222,37 @@ func printKeyUsage(keyUsage x509.KeyUsage) {
 			fmt.Printf("- %s\n", usage)
 		}
 	}
+}
+
+// validHostRE matches only legal hostname characters (letters, digits, hyphens, dots).
+var validHostRE = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9\-\.]*$`)
+
+// sanitizeHost strips non-hostname characters and validates the result against a
+// strict hostname pattern, returning "[invalid host]" on failure. Prevents log
+// injection when printing attacker-controlled hostname values.
+func sanitizeHost(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '.' {
+			b.WriteRune(r)
+		}
+	}
+	cleaned := b.String()
+	if !validHostRE.MatchString(cleaned) {
+		return "[invalid host]"
+	}
+	return cleaned
+}
+
+// sanitizeURL strips control characters from a URL string for safe printing.
+func sanitizeURL(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r >= 32 && r != 127 {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // parseDays parses the number of days from a string.

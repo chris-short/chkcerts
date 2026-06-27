@@ -14,9 +14,38 @@ A Go program to display certificate chains and validate their order in the same 
 
 ## Usage
 
+	chkcerts <url> [days]
+	chkcerts -k <url> [days]
+
 	chkcerts https://chrisshort.net
 
 	chkcerts https://chrisshort.net 90
+
+	chkcerts -k https://self-signed.example.com
+
+### Flags
+
+| Flag | Description |
+|------|-------------|
+| `-k`, `--insecure` | Skip TLS certificate verification. Required for self-signed certificates that would otherwise fail validation. |
+
+### Redirect handling
+
+If a URL redirects, `chkcerts` reports the certificate at each hop so you can analyze the full chain end to end.
+
+	chkcerts https://commandlineheroes.com
+
+	=== Hop 1: https://commandlineheroes.com → https://www.redhat.com/en/command-line-heroes (HTTP 301) ===
+
+	Subject: commandlineheroes.com
+	...
+	Certificate chain is valid and in the correct order.
+
+	=== Hop 2: https://www.redhat.com/en/command-line-heroes (HTTP 200) ===
+
+	Subject: www.redhat.com
+	...
+	Certificate chain is valid and in the correct order.
 
 ### Example Output (no days)
 
@@ -68,24 +97,6 @@ A Go program to display certificate chains and validate their order in the same 
 	Fingerprint (SHA-256): 81cd2cce6caf805ec597523569b7389ffef006ac49e2dc83e43a5e1caa93ed2e
 	HSTS Header: max-age=63072000; includeSubDomains; preload
 	-----
-	Certificate chain is valid and in the correct order.
-
-### Example Output with Redirects
-
-When a URL redirects, each hop in the chain is reported separately:
-
-	=== Hop 1: https://commandlineheroes.com → https://www.redhat.com/en/command-line-heroes (HTTP 301) ===
-
-	Subject: commandlineheroes.com
-	Issuer: YE1
-	...
-	Certificate chain is valid and in the correct order.
-
-	=== Hop 2: https://www.redhat.com/en/command-line-heroes (HTTP 200) ===
-
-	Subject: www.redhat.com
-	Issuer: DigiCert EV RSA CA G2
-	...
 	Certificate chain is valid and in the correct order.
 
 ## About
